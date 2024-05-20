@@ -138,10 +138,21 @@ export const disposeAllMeshes = (object3D) => {
     }
 };
 
-export const delayedExecute = (func) => {
+export const delayedExecute = (func, fast) => {
     return new Promise((resolve) => {
         window.setTimeout(() => {
             resolve(func());
-        }, 1);
+        }, fast ? 1 : 50);
     });
+};
+
+
+export const getSphericalHarmonicsComponentCountForDegree = (sphericalHarmonicsDegree = 0) => {
+    switch (sphericalHarmonicsDegree) {
+        case 1:
+            return 9;
+        case 2:
+            return 24;
+    }
+    return 0;
 };
