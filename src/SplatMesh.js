@@ -34,6 +34,7 @@ export class SplatMesh extends THREE.Mesh {
                 enableDistancesComputationOnGPU = true, integerBasedDistancesComputation = false,
                 antialiased = false, maxScreenSpaceSplatSize = 2048, logLevel = LogLevel.None, sphericalHarmonicsDegree = 0) {
         super(dummyGeometry, dummyMaterial);
+        window.mesh = this;
         // Reference to a Three.js renderer
         this.renderer = undefined;
         // Use 16-bit floating point values when storing splat covariance data in textures, instead of 32-bit

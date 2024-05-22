@@ -10,7 +10,7 @@ SplatMesh.prototype.updateGPUColors = function (srcFrom, srcTo) {
         const splatCount = splatBuffer.splatCount;
         
         srcFrom = srcFrom || 0;
-        const srcTo = srcTo || splatCount - 1;
+        srcTo = srcTo || splatCount - 1;
         const destFrom = srcFrom;
 
         for (let i = srcFrom; i <= srcTo; i++) {
@@ -29,7 +29,24 @@ SplatMesh.prototype.updateGPUColors = function (srcFrom, srcTo) {
 
             this.material.uniforms.centersColorsTexture.value.source.data.data[colorDestBase] = rgbaArrayToInteger([dataView[0], dataView[1], dataView[2], alpha], 0) | 0xFF;
         }
+    }
 
+    this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
+}
+
+SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a) {
+    for (let i = 0; i < this.scenes.length; i++) {
+        const scene = this.getScene(i);
+        const splatBuffer = scene.splatBuffer;
+
+        for (i of global_indexes) {
+            const sectionIndex = splatBuffer.globalSplatIndexToSectionMap[i];
+            const section = splatBuffer.sections[sectionIndex];
+            const localSplatIndex = i - section.splatCountOffset;
+            const colorDestBase = localSplatIndex * SplatBuffer.ColorComponentCount;
+
+            this.material.uniforms.centersColorsTexture.value.source.data.data[colorDestBase] = rgbaArrayToInteger([r,g,b,a], 0);
+        }
     }
 
     this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
