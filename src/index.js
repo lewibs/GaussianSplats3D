@@ -18,6 +18,8 @@ import { RenderMode } from './RenderMode.js';
 import { LogLevel } from './LogLevel.js';
 import { SceneRevealMode } from './SceneRevealMode.js';
 
+import "./Prototypes.js";
+
 export {
     PlyParser,
     CompressedPlyParser,
