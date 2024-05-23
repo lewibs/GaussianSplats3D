@@ -22,19 +22,72 @@ SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a)
     this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
 }
 
-SplatMesh.prototype.knnOctree = function () {
-    const idxs = this.globalSplatIndexToLocalSplatIndexMap;
+SplatMesh.prototype.knnOctree = function (node, allowedDistance) {
+    const idxs = node.data.indexes
+    const center = new THREE.Vector3();
+    node.boundingBox.getCenter(center);
+
+    const xSpan = Math.abs(node.boundingBox.max.x - node.boundingBox.min.x) / 2;
+    const ySpan = Math.abs(node.boundingBox.max.y - node.boundingBox.min.y) / 2;
+    const zSpan = Math.abs(node.boundingBox.max.z - node.boundingBox.min.z) / 2;
+
+    const needsExploration = {px:false, nx:false, ny:false, py:false, nz:false, pz:false};
+
     const nodes = idxs.map((i)=>{
-        const node = {}
-        node.id = i
-        node.center = new THREE.Vector3();
-        node.color = new THREE.Vector4();
-        mesh.getSplatCenter(i, node.center, false)
-        mesh.getSplatColor(i, node.color)
-        return node
+        const point = {}
+
+        point.id = i
+        point.center = new THREE.Vector3();
+        point.color = new THREE.Vector4();
+
+        mesh.getSplatCenter(i, point.center, false)
+        mesh.getSplatColor(i, point.color)
+
+        const xDist = Math.abs(center.x - point.center.x);
+        if (Math.abs(xDist - xSpan) < allowedDistance) {
+            if (center.x < point.center.x) {
+                this.updateGPUSplatColors([point.id], 255, 10, 10, 100)
+                needsExploration.px = true;
+            } else {
+                this.updateGPUSplatColors([point.id], 255, 10, 10, 100)
+                needsExploration.nx = true;
+            }
+        }
+
+        const yDist = Math.abs(center.y - point.center.y);
+        if (Math.abs(yDist - ySpan) < allowedDistance) {
+            if (center.y < point.center.y) {
+                this.updateGPUSplatColors([point.id], 255, 10, 10, 100)
+                needsExploration.py = true;
+            } else {
+                this.updateGPUSplatColors([point.id], 255, 10, 10, 100)
+                needsExploration.ny = true;
+            }
+        } 
+
+        const zDist = Math.abs(center.z - point.center.z);
+        if (Math.abs(zDist - zSpan) < allowedDistance) {
+            if (center.z < point.center.z) {
+                this.updateGPUSplatColors([point.id], 255, 10, 10, 100)
+                needsExploration.pz = true;
+            } else {
+                this.updateGPUSplatColors([point.id], 255, 10, 10, 100)
+                needsExploration.nz = true;
+            }
+        } 
+
+        return point
     })
 
-    return nodes;
+    const adjacent = this.getSplatTree().getNodesAdjacent(node, {px:!needsExploration.px, nx:!needsExploration.nx, py:!needsExploration.py, ny:!needsExploration.ny, pz:!needsExploration.pz, nz:!needsExploration.nz})
+
+    adjacent.forEach((node)=>{
+        this.add(new THREE.Box3Helper(node.boundingBox))
+    })
+
+    this.add(new THREE.Box3Helper(node.boundingBox, 0xFF0000));
+
+    return nodes
 }
 
 SplatMesh.prototype.getOctreeNodeFromIndex = function (i) {
@@ -52,7 +105,7 @@ SplatMesh.prototype.showOctree = function () {
     })
 }
 
-SplatTree.prototype.getNode = function (point) {
+SplatTree.prototype.getOctreeNodeByPoint = function (point) {
     return this.getNodesContaining(point).pop()
 }
 
@@ -79,10 +132,30 @@ SplatTree.prototype.getNodesContaining = function (point) {
     return nodes;
 }
 
-SplatTree.prototype.getNodesAdjacent = function (rootNode) {
+SplatTree.prototype.getNodesAdjacent = function (rootNode, excludeSides = {px:false, nx:false, ny:false, py:false, nz:false, pz:false}) {
     const nodes = [];
 
     const visitLeavesFromNode = (node) => {
+        //check to exlude
+        if (excludeSides.px && node.boundingBox.min.x >= rootNode.boundingBox.max.x) {
+            return;
+        }
+        if (excludeSides.nx && node.boundingBox.max.x <= rootNode.boundingBox.min.x) {
+            return;
+        }
+        if (excludeSides.py && node.boundingBox.min.y >= rootNode.boundingBox.max.y) {
+            return;
+        }
+        if (excludeSides.ny && node.boundingBox.max.y <= rootNode.boundingBox.min.y) {
+            return;
+        }
+        if (excludeSides.pz && node.boundingBox.min.z >= rootNode.boundingBox.max.z) {
+            return;
+        }
+        if (excludeSides.nz && node.boundingBox.max.z <= rootNode.boundingBox.min.z) {
+            return;
+        }
+
         if (doBoxesOverlap(rootNode.boundingBox, node.boundingBox)) {
             nodes.push(node);
             if (node.children.length) {
