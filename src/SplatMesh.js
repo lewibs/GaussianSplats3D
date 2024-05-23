@@ -9,6 +9,8 @@ import { SceneRevealMode } from './SceneRevealMode.js';
 import { LogLevel } from './LogLevel.js';
 import { getSphericalHarmonicsComponentCountForDegree } from './Util.js';
 
+window.THREE = THREE;
+
 const dummyGeometry = new THREE.BufferGeometry();
 const dummyMaterial = new THREE.MeshBasicMaterial();
 

@@ -1,38 +1,8 @@
 import { SplatBuffer } from "./loaders/SplatBuffer";
 import { SplatMesh } from "./SplatMesh";
 import { rgbaArrayToInteger } from "./Util";
-
-SplatMesh.prototype.updateGPUColors = function (srcFrom, srcTo) {
-
-    for (let i = 0; i < this.scenes.length; i++) {
-        const scene = this.getScene(i);
-        const splatBuffer = scene.splatBuffer;
-        const splatCount = splatBuffer.splatCount;
-        
-        srcFrom = srcFrom || 0;
-        srcTo = srcTo || splatCount - 1;
-        const destFrom = srcFrom;
-
-        for (let i = srcFrom; i <= srcTo; i++) {
-            const sectionIndex = splatBuffer.globalSplatIndexToSectionMap[i];
-            const section = splatBuffer.sections[sectionIndex];
-            const localSplatIndex = i - section.splatCountOffset;
-
-            const colorDestBase = (i - srcFrom + destFrom) * SplatBuffer.ColorComponentCount;
-            const srcSplatColorsBase = section.bytesPerSplat * localSplatIndex +
-                                    SplatBuffer.CompressionLevels[splatBuffer.compressionLevel].ColorOffsetBytes;
-
-            const dataView = new Uint8Array(splatBuffer.bufferData, section.dataBase + srcSplatColorsBase);
-
-            let alpha = dataView[3];
-            alpha = (alpha >= scene.minimumAlpha) ? alpha : 0;
-
-            this.material.uniforms.centersColorsTexture.value.source.data.data[colorDestBase] = rgbaArrayToInteger([dataView[0], dataView[1], dataView[2], alpha], 0) | 0xFF;
-        }
-    }
-
-    this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
-}
+import * as THREE from "three";
+import { SplatTree } from "./splattree/SplatTree";
 
 SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a) {
     for (let i = 0; i < this.scenes.length; i++) {
@@ -50,34 +20,111 @@ SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a)
     }
 
     this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
-} 
+}
 
-SplatBuffer.prototype.getColorBufferArray = function(srcFrom, srcTo) {
-    // const splatCount = this.splatCount;
-    // const outColorArray = []
+SplatMesh.prototype.knnOctree = function () {
+    const idxs = this.globalSplatIndexToLocalSplatIndexMap;
+    const nodes = idxs.map((i)=>{
+        const node = {}
+        node.id = i
+        node.center = new THREE.Vector3();
+        node.color = new THREE.Vector4();
+        mesh.getSplatCenter(i, node.center, false)
+        mesh.getSplatColor(i, node.color)
+        return node
+    })
 
-    // srcFrom = srcFrom || 0;
-    // srcTo = srcTo || splatCount - 1;
-    // const destFrom = srcFrom;
+    return nodes;
+}
 
-    // for (let i = srcFrom; i <= srcTo; i++) {
-    //     const sectionIndex = this.globalSplatIndexToSectionMap[i];
-    //     const section = this.sections[sectionIndex];
-    //     const localSplatIndex = i - section.splatCountOffset;
+SplatMesh.prototype.getOctreeNodeFromIndex = function (i) {
+    const center = new THREE.Vector3();
+    this.getSplatCenter(i, center, false);
+    const tree = this.getSplatTree();
+    return tree.getNode(center);
+}
 
-    //     const colorDestBase = (i - srcFrom + destFrom) * SplatBuffer.ColorComponentCount;
-    //     const srcSplatColorsBase = section.bytesPerSplat * localSplatIndex +
-    //                                SplatBuffer.CompressionLevels[this.compressionLevel].ColorOffsetBytes;
+SplatMesh.prototype.showOctree = function () {
+    const tree = this.getSplatTree()
 
-    //     const dataView = new Uint8Array(this.bufferData, section.dataBase + srcSplatColorsBase);
+    tree.visitLeaves((node)=>{
+        this.add(new THREE.Box3Helper(node.boundingBox))
+    })
+}
 
-    //     dataView[0] = 255;
+SplatTree.prototype.getNode = function (point) {
+    return this.getNodesContaining(point).pop()
+}
 
-    //     outColorArray[colorDestBase] = dataView[0];
-    //     outColorArray[colorDestBase + 1] = dataView[1];
-    //     outColorArray[colorDestBase + 2] = dataView[2];
-    //     outColorArray[colorDestBase + 3] = dataView[3];
-    // }
+SplatTree.prototype.getNodesContaining = function (point) {
+    const nodes = [];
 
-    // console.log(outColorArray.length)
+    const visitLeavesFromNode = (node) => {
+        if (node.boundingBox.containsPoint(point)) {
+            nodes.push(node);
+            if (node.children.length) {
+                for (let child of node.children) {
+                    visitLeavesFromNode(child);
+                }
+            } else {   
+                return;
+            }
+        }
+    };
+
+    for (let subTree of this.subTrees) {
+        visitLeavesFromNode(subTree.rootNode);
+    }
+
+    return nodes;
+}
+
+SplatTree.prototype.getNodesAdjacent = function (rootNode) {
+    const nodes = [];
+
+    const visitLeavesFromNode = (node) => {
+        if (doBoxesOverlap(rootNode.boundingBox, node.boundingBox)) {
+            nodes.push(node);
+            if (node.children.length) {
+                for (let child of node.children) {
+                    visitLeavesFromNode(child);
+                }
+            }
+        }
+    };
+
+    for (let subTree of this.subTrees) {
+        visitLeavesFromNode(subTree.rootNode);
+    }
+
+    return nodes.filter((node)=>node.children.length === 0 && node !== rootNode);
+
+    function doBoxesOverlap (box1, box2) {
+        function pointIsTouching(box, point) {
+            return box.containsPoint(point)
+        }
+    
+        function getVertices(box) {
+            const min = box.min;
+            const max = box.max;
+    
+            // Calculate the vertices
+            const vertices = [
+                new THREE.Vector3(min.x, min.y, min.z),
+                new THREE.Vector3(min.x, min.y, max.z),
+                new THREE.Vector3(min.x, max.y, min.z),
+                new THREE.Vector3(min.x, max.y, max.z),
+                new THREE.Vector3(max.x, min.y, min.z),
+                new THREE.Vector3(max.x, min.y, max.z),
+                new THREE.Vector3(max.x, max.y, min.z),
+                new THREE.Vector3(max.x, max.y, max.z)
+            ];
+            return vertices
+        }
+    
+        return [
+            ...getVertices(box1).map((vertex)=>pointIsTouching(box2, vertex)),
+            ...getVertices(box2).map((vertex)=>pointIsTouching(box1, vertex))
+        ].some(value => value)
+    }
 }
