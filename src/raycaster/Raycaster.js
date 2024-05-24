@@ -77,7 +77,10 @@ export class Raycaster {
                 if (a.distance > b.distance) return 1;
                 else return -1;
             });
+            
+            console.log(outHits);
 
+            splatMesh.add(new THREE.Box3Helper(splatMesh.getOctreeNodeFromIndex(outHits[0].splatIndex).boundingBox));
             return outHits;
         };
 

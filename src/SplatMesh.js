@@ -444,7 +444,7 @@ export class SplatMesh extends THREE.Mesh {
                 float eigenValue2 = traceOver2 - term2;
 
                 if (pointCloudModeEnabled == 1) {
-                    eigenValue1 = eigenValue2 = 0.2;
+                    eigenValue1 = eigenValue2 = 1.0;
                 }
 
                 if (eigenValue2 <= 0.0) return;

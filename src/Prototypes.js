@@ -22,31 +22,113 @@ SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a)
     this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
 }
 
-SplatMesh.prototype.knnOctree = function (splatIndex, allowedDistanceDeviation, allowedColorDeviation) {
-    const EXPLORED_NODES = {}
-    const points = [];
-    const node = this.getOctreeNodeFromIndex(splatIndex)
-    const color = new THREE.Vector4()
-    const center = new THREE.Vector3()
-
-    this.getSplatCenter(splatIndex, center, false);
-    this.getSplatColor(splatIndex, color);
-
-    const colorInRange = (color4) => {
-        if (!(color.x - allowedColorDeviation <= color4.x && color4.x <= color.x + allowedColorDeviation)) {
-            return false;
-        }
-
-        if (!(color.y - allowedColorDeviation <= color4.y && color4.y <= color.y + allowedColorDeviation)) {
-            return false;
-        }
-
-        if (!(color.z - allowedColorDeviation <= color4.z && color4.z <= color.z + allowedColorDeviation)) {
-            return false;
-        }
-
-        return true;
+SplatMesh.prototype.knnOctree = function (splatIndex) {
+    const EXPLORED_NODES = {};
+    const ALLOWED_GAP = 0; //TODO just block expansion for now
+    
+    class PointDto {
+        id;
+        color=new THREE.Vector3();
+        center = new THREE.Vector3();
     }
+
+    //used to check if need to explore outside of node
+    const needsExplorationCheck = (centerCoord, pointCoord, boxRadius) => {
+        const dist = Math.abs(centerCoord - pointCoord);
+        if (Math.abs(dist - boxRadius) < ALLOWED_GAP) {
+            if (centerCoord < pointCoord) {
+                return [false, true];
+            } else {
+                return [true, false];
+            }
+        } else {
+            return [false, false];
+        }
+    };
+    
+    const [acceptPoint, group] = ((splatIndex) => {
+        const startingPoint = new PointDto();
+        startingPoint.id = splatIndex
+        startingPoint.center = new THREE.Vector3();
+        startingPoint.color = new THREE.Vector4();
+        this.getSplatCenter(splatIndex, startingPoint.center, false)
+        this.getSplatColor(splatIndex, startingPoint.color)
+
+        //TODO if you have more then one group you can back check and try again with a subgroup and see if they can be merged with more "group data"
+        const group = {
+            points:[startingPoint],
+            centerSum:new THREE.Vector3(),
+            center:new THREE.Vector3(),
+            nearestDistSum:0,
+            averageNearestDist:100,
+        };
+
+        function updateGroupInfo(group, point, dists) {
+            group.centerSum.add(point.center);
+            group.center = group.centerSum.clone();
+            group.center.divideScalar(group.points.length);
+            //TODO find a fast way to do the average nearest dist. see if its even needed.
+            //this seems to be done in position model so you can jsut do it there to optimize rather then doing it two times
+            // group.averageNearestDist = ALLOWED_GAP;
+            //THIS CAN BE OPTIMIZED I JUST CANT THIN K HOW RIGHT NOW> IM CONFIDENT YOU CAN SKIP A FOR LOOP
+            group.nearestDistSum += dists[0] * 2;
+            group.averageNearestDist = group.nearestDistSum / group.points.length;
+        }
+
+        const colorModel = (color4) => {
+            const dist = Math.sqrt(Math.pow(startingPoint.color.x - color4.x, 2) + Math.pow(startingPoint.color.y - color4.y, 2) + Math.pow(startingPoint.color.z - color4.z, 2))
+
+            if (dist <= 10) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        const positionModel = (point, dists=[]) => {
+            group.points.forEach((p)=>{
+                dists.push(point.distanceTo(p.center))
+            })
+
+            dists.sort();
+
+            const minDist = dists[0];
+            const distToCenter = group.center.distanceTo(point);
+
+            console.log(group.averageNearestDist);
+            if (minDist <= group.averageNearestDist) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        const inGroupModel = (colorPrediction, positionPrediction)=>{
+            if (colorPrediction + positionPrediction >= 1) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        const acceptPoint = (point)=>{
+            // const node = this.getOctreeNodeByPoint(point.center)
+            const dists = []
+            const isGood = !!inGroupModel(
+                colorModel(point.color),
+                positionModel(point.center, dists),
+            )
+
+            if (isGood) {
+                group.points.push(point);
+                updateGroupInfo(group, point, dists);
+            }
+
+            return isGood;
+        }
+
+        return [acceptPoint, group];
+    })(splatIndex)
 
     const knnExplore = (node) => {
         if (EXPLORED_NODES[node.id]) {
@@ -54,7 +136,6 @@ SplatMesh.prototype.knnOctree = function (splatIndex, allowedDistanceDeviation, 
         } else {
             EXPLORED_NODES[node.id] = true
         }
-
 
         const idxs = node.data.indexes
         const center = new THREE.Vector3();
@@ -67,43 +148,21 @@ SplatMesh.prototype.knnOctree = function (splatIndex, allowedDistanceDeviation, 
         const needsExploration = {px:false, nx:false, ny:false, py:false, nz:false, pz:false};
 
         for (let i of idxs) {
-            const point = {}
-        
+            
+            const point = new PointDto();
             point.id = i
             point.center = new THREE.Vector3();
             point.color = new THREE.Vector4();
-        
             this.getSplatCenter(i, point.center, false)
             this.getSplatColor(i, point.color)
-        
-            const xDist = Math.abs(center.x - point.center.x);
-            if (Math.abs(xDist - xSpan) < allowedDistanceDeviation) {
-                if (center.x < point.center.x && colorInRange(point.color)) {
-                    needsExploration.px = true;
-                } else if (colorInRange(point.color)) {
-                    needsExploration.nx = true;
-                }
-            }
-        
-            const yDist = Math.abs(center.y - point.center.y);
-            if (Math.abs(yDist - ySpan) < allowedDistanceDeviation) {
-                if (center.y < point.center.y && colorInRange(point.color)) {
-                    needsExploration.py = true;
-                } else if (colorInRange(point.color)) {
-                    needsExploration.ny = true;
-                }
-            } 
-        
-            const zDist = Math.abs(center.z - point.center.z);
-            if (Math.abs(zDist - zSpan) < allowedDistanceDeviation) {
-                if (center.z < point.center.z && colorInRange(point.color)) {
-                    needsExploration.pz = true;
-                } else if (colorInRange(point.color)) {
-                    needsExploration.nz = true;
-                }
+            
+            
+            if (acceptPoint(point)) {
+                [needsExploration.px, needsExploration.nx] = needsExplorationCheck(center.x, point.center.x, xSpan);
+                [needsExploration.py, needsExploration.ny] = needsExplorationCheck(center.y, point.center.y, ySpan);
+                [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
             }
 
-            points.push(point);
         }
 
         const adjacent = this.getSplatTree().getNodesAdjacent(node, {px:!needsExploration.px, nx:!needsExploration.nx, py:!needsExploration.py, ny:!needsExploration.ny, pz:!needsExploration.pz, nz:!needsExploration.nz})
@@ -111,13 +170,13 @@ SplatMesh.prototype.knnOctree = function (splatIndex, allowedDistanceDeviation, 
         adjacent.forEach((node)=>{
             knnExplore(node);
         })
+
     }
 
+    const node = this.getOctreeNodeFromIndex(splatIndex); 
+    knnExplore(node);
 
-    knnExplore(node)
-    // this.add(new THREE.Box3Helper(node.boundingBox, 0xFF0000));
-
-    return points
+    return group.points;
 }
 
 SplatMesh.prototype.getOctreeNodeFromIndex = function (i) {
