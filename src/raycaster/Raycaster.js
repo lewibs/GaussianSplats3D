@@ -78,9 +78,12 @@ export class Raycaster {
                 else return -1;
             });
             
-            console.log(outHits);
+            const node = splatMesh.getOctreeNodeFromIndex(outHits[0].splatIndex)
+            splatMesh.add(new THREE.Box3Helper(node.boundingBox));
+            const nodes = splatMesh.knnOctree(outHits[0].splatIndex);
+            const idxs = nodes.map((node)=>node.id)
+            splatMesh.updateGPUSplatColors(idxs, 255,10,10,100)
 
-            splatMesh.add(new THREE.Box3Helper(splatMesh.getOctreeNodeFromIndex(outHits[0].splatIndex).boundingBox));
             return outHits;
         };
 

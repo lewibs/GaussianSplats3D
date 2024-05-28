@@ -3,6 +3,9 @@ import { SplatMesh } from "./SplatMesh";
 import { rgbaArrayToInteger } from "./Util";
 import * as THREE from "three";
 import { SplatTree } from "./splattree/SplatTree";
+import BlobTree from "./BlobTree";
+import DBSCAN from "./DBSCAN";
+import OPTICS from "./OPTICS";
 
 SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a) {
     for (let i = 0; i < this.scenes.length; i++) {
@@ -51,78 +54,48 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
         startingPoint.id = splatIndex
         startingPoint.center = new THREE.Vector3();
         startingPoint.color = new THREE.Vector4();
+        startingPoint.accepted = true;
         this.getSplatCenter(splatIndex, startingPoint.center, false)
         this.getSplatColor(splatIndex, startingPoint.color)
 
         //TODO if you have more then one group you can back check and try again with a subgroup and see if they can be merged with more "group data"
         const group = {
-            points:[startingPoint],
-            centerSum:new THREE.Vector3(),
-            center:new THREE.Vector3(),
-            nearestDistSum:0,
-            averageNearestDist:100,
+            accepted:[startingPoint],
+            rejected:[],
+            all: [startingPoint],
         };
-
-        function updateGroupInfo(group, point, dists) {
-            group.centerSum.add(point.center);
-            group.center = group.centerSum.clone();
-            group.center.divideScalar(group.points.length);
-            //TODO find a fast way to do the average nearest dist. see if its even needed.
-            //this seems to be done in position model so you can jsut do it there to optimize rather then doing it two times
-            // group.averageNearestDist = ALLOWED_GAP;
-            //THIS CAN BE OPTIMIZED I JUST CANT THIN K HOW RIGHT NOW> IM CONFIDENT YOU CAN SKIP A FOR LOOP
-            group.nearestDistSum += dists[0] * 2;
-            group.averageNearestDist = group.nearestDistSum / group.points.length;
-        }
-
-        const colorModel = (color4) => {
-            const dist = Math.sqrt(Math.pow(startingPoint.color.x - color4.x, 2) + Math.pow(startingPoint.color.y - color4.y, 2) + Math.pow(startingPoint.color.z - color4.z, 2))
-
-            if (dist <= 10) {
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-
-        const positionModel = (point, dists=[]) => {
-            group.points.forEach((p)=>{
-                dists.push(point.distanceTo(p.center))
-            })
-
-            dists.sort();
-
-            const minDist = dists[0];
-            const distToCenter = group.center.distanceTo(point);
-
-            console.log(group.averageNearestDist);
-            if (minDist <= group.averageNearestDist) {
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-
-        const inGroupModel = (colorPrediction, positionPrediction)=>{
-            if (colorPrediction + positionPrediction >= 1) {
-                return 1;
-            } else {
-                return 0;
-            }
-        }
 
         const acceptPoint = (point)=>{
             // const node = this.getOctreeNodeByPoint(point.center)
-            const dists = []
-            const isGood = !!inGroupModel(
-                colorModel(point.color),
-                positionModel(point.center, dists),
-            )
+            let isGood = true;
+            let dist = 0;
+            const minDist = Number.MAX_SAFE_INTEGER; 
+            const blobCenter = new THREE.Vector3();
+            const blobColor = new THREE.Vector4();
+            
+            for (let i = 0; i < group.accepted; i++) {
+                dist = group.accepted[i].center.distanceTo(minDist)
+                blobCenter.add(group.accepted[i].center)
+                blobColor.add(group.accepted[i].color)
+
+                if (dist < minDist) {
+                    minDist = dist;
+                }
+            }
+
+            blobCenter.divideScalar(group.accepted.length)
+            blobColor.divideScalar(group.accepted.length)
+
+            //TODO decide if it is good here...
 
             if (isGood) {
-                group.points.push(point);
-                updateGroupInfo(group, point, dists);
+                point.accepted = true;
+                group.accepted.push(point);
+            } else {
+                point.accepted = false;
+                group.rejected.push(point);
             }
+            group.all.push(point);
 
             return isGood;
         }
@@ -147,23 +120,57 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
 
         const needsExploration = {px:false, nx:false, ny:false, py:false, nz:false, pz:false};
 
+        const DBSCAN_DATA = [];
+        const INDEXES = [];
+
         for (let i of idxs) {
-            
+            INDEXES.push(i);
             const point = new PointDto();
             point.id = i
             point.center = new THREE.Vector3();
             point.color = new THREE.Vector4();
             this.getSplatCenter(i, point.center, false)
             this.getSplatColor(i, point.color)
-            
-            
-            if (acceptPoint(point)) {
-                [needsExploration.px, needsExploration.nx] = needsExplorationCheck(center.x, point.center.x, xSpan);
-                [needsExploration.py, needsExploration.ny] = needsExplorationCheck(center.y, point.center.y, ySpan);
-                [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
-            }
+            DBSCAN_DATA.push([point.color.x, point.color.y, point.color.z]);
+            //DBSCAN_DATA.push([point.center.x, point.center.y, point.center.z]);
+
+            //DO NOT DELETE THIS IS USED TO EXPORE MOR ENODES
+            // if (acceptPoint(point)) {
+            //     [needsExploration.px, needsExploration.nx] = needsExplorationCheck(center.x, point.center.x, xSpan);
+            //     [needsExploration.py, needsExploration.ny] = needsExplorationCheck(center.y, point.center.y, ySpan);
+            //     [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
+            // }
 
         }
+
+        console.log(DBSCAN_DATA);
+
+        const dbscan = new DBSCAN();
+        const clusters = dbscan.run(DBSCAN_DATA, 10, 1);
+        // const noise = dbscan.noise;
+
+        // for (let i = 0; i < noise.length; i++) {
+        //     noise[i] = INDEXES[noise[i]];
+        // }
+        // this.updateGPUSplatColors(noise, 0,0,0,255);
+
+        const colors = [
+            [255,0,0],
+            [0,255,0],
+            [0,0,255],
+            [255,255,0],
+            [0,255,255],
+            [255,0,255],
+            [255,255,255]
+        ];
+        console.log(clusters);
+        clusters.forEach((cluster, i)=>{
+            for (let i = 0; i < cluster.length; i++) {
+                cluster[i] = INDEXES[cluster[i]];
+            }
+            this.updateGPUSplatColors(cluster, ...colors[i], 255);
+        })
+        
 
         const adjacent = this.getSplatTree().getNodesAdjacent(node, {px:!needsExploration.px, nx:!needsExploration.nx, py:!needsExploration.py, ny:!needsExploration.ny, pz:!needsExploration.pz, nz:!needsExploration.nz})
 
@@ -176,7 +183,7 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
     const node = this.getOctreeNodeFromIndex(splatIndex); 
     knnExplore(node);
 
-    return group.points;
+    return group.accepted;
 }
 
 SplatMesh.prototype.getOctreeNodeFromIndex = function (i) {
