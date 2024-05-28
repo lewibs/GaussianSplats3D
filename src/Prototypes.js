@@ -146,22 +146,39 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
         console.log(DBSCAN_DATA);
 
         const dbscan = new DBSCAN();
-        const clusters = dbscan.run(DBSCAN_DATA, 10, 1);
-        // const noise = dbscan.noise;
+        const clusters = dbscan.run(DBSCAN_DATA, 5, 1);
+        const noise = dbscan.noise;
 
-        // for (let i = 0; i < noise.length; i++) {
-        //     noise[i] = INDEXES[noise[i]];
-        // }
-        // this.updateGPUSplatColors(noise, 0,0,0,255);
+        for (let i = 0; i < noise.length; i++) {
+            noise[i] = INDEXES[noise[i]];
+        }
+        this.updateGPUSplatColors(noise, 0,0,0,255);
 
         const colors = [
-            [255,0,0],
-            [0,255,0],
-            [0,0,255],
-            [255,255,0],
-            [0,255,255],
-            [255,0,255],
-            [255,255,255]
+            [255,0,0],    // Red
+            [0,255,0],    // Green
+            [0,0,255],    // Blue
+            [255,255,0],  // Yellow
+            [0,255,255],  // Cyan
+            [255,0,255],  // Magenta
+            [255,255,255],// White
+            [128,0,0],    // Maroon
+            [128,128,0],  // Olive
+            [0,128,0],    // Dark Green
+            [128,0,128],  // Purple
+            [0,128,128],  // Teal
+            [0,0,128],    // Navy
+            [192,192,192],// Silver
+            [128,128,128],// Gray
+            [255,165,0],  // Orange
+            [255,192,203],// Pink
+            [75,0,130],   // Indigo
+            [240,230,140],// Khaki
+            [173,216,230],// Light Blue
+            [250,128,114],// Salmon
+            [244,164,96], // Sandy Brown
+            [32,178,170], // Light Sea Green
+            [255,215,0]   // Gold
         ];
         console.log(clusters);
         clusters.forEach((cluster, i)=>{
