@@ -7,6 +7,33 @@ import BlobTree from "./BlobTree";
 import DBSCAN from "./DBSCAN";
 import OPTICS from "./OPTICS";
 
+const colors = [
+    [255,0,0],    // Red
+    [0,255,0],    // Green
+    [0,0,255],    // Blue
+    [255,255,0],  // Yellow
+    [0,255,255],  // Cyan
+    [255,0,255],  // Magenta
+    [255,255,255],// White
+    [128,0,0],    // Maroon
+    [128,128,0],  // Olive
+    [0,128,0],    // Dark Green
+    [128,0,128],  // Purple
+    [0,128,128],  // Teal
+    [0,0,128],    // Navy
+    [192,192,192],// Silver
+    [128,128,128],// Gray
+    [255,165,0],  // Orange
+    [255,192,203],// Pink
+    [75,0,130],   // Indigo
+    [240,230,140],// Khaki
+    [173,216,230],// Light Blue
+    [250,128,114],// Salmon
+    [244,164,96], // Sandy Brown
+    [32,178,170], // Light Sea Green
+    [255,215,0]   // Gold
+];
+
 SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a) {
     for (let i = 0; i < this.scenes.length; i++) {
         const scene = this.getScene(i);
@@ -58,6 +85,14 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
         this.getSplatCenter(splatIndex, startingPoint.center, false)
         this.getSplatColor(splatIndex, startingPoint.color)
 
+        const antiPoint = new PointDto();
+        antiPoint.id = Number.MIN_SAFE_INTEGER;
+        antiPoint.color = new THREE.Vector3(
+            255 - startingPoint.color.x,
+            255 - startingPoint.color.y,
+            255 - startingPoint.color.z
+          );
+
         //TODO if you have more then one group you can back check and try again with a subgroup and see if they can be merged with more "group data"
         const group = {
             accepted:[startingPoint],
@@ -66,27 +101,134 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
         };
 
         const acceptPoint = (point)=>{
-            // const node = this.getOctreeNodeByPoint(point.center)
-            let isGood = true;
-            let dist = 0;
-            const minDist = Number.MAX_SAFE_INTEGER; 
+            let minDist = Number.MAX_SAFE_INTEGER;
+            let meanDists = 0;
             const blobCenter = new THREE.Vector3();
             const blobColor = new THREE.Vector4();
             
-            for (let i = 0; i < group.accepted; i++) {
-                dist = group.accepted[i].center.distanceTo(minDist)
-                blobCenter.add(group.accepted[i].center)
-                blobColor.add(group.accepted[i].color)
+            {
+                let dist = 0;
+                
+                for (let i = 0; i < group.accepted.length; i++) {
+                    dist = group.accepted[i].center.distanceTo(point.center)
+                    blobCenter.add(group.accepted[i].center)
+                    blobColor.add(group.accepted[i].color)
 
-                if (dist < minDist) {
-                    minDist = dist;
+                    for (let ii = 0; ii < group.accepted; ii++) {
+                        meanDists += group.accepted[i].center.distanceTo(group.accepted[ii].center);
+                    }
+    
+                    if (dist < minDist) {
+                        minDist = dist;
+                    }
                 }
+    
+                meanDists /= group.accepted.length;
+                blobCenter.divideScalar(group.accepted.length);
+                blobColor.divideScalar(group.accepted.length);
             }
 
-            blobCenter.divideScalar(group.accepted.length)
-            blobColor.divideScalar(group.accepted.length)
-
             //TODO decide if it is good here...
+            // const dbscan = new DBSCAN()
+            // var accepted_clusters = dbscan.run(group.accepted.map((point)=>[point.color.x, point.color.y, point.color.z]), 5, 2)
+            // accepted_clusters.sort((a,b)=>b.length - a.length);
+            // const accepted_colors = accepted_clusters.map((cluster)=>{
+            //     const result = cluster.reduce((ac, va)=>{
+            //         ac[0] += group.accepted[va].color.x;
+            //         ac[1] += group.accepted[va].color.y;
+            //         ac[2] += group.accepted[va].color.z;
+            //         return ac
+            //     }, [0,0,0])
+            //     result[0] /= accepted_clusters.length
+            //     result[1] /= accepted_clusters.length
+            //     result[2] /= accepted_clusters.length
+            //     return result;
+            // });
+
+            // var declined_clusters = dbscan.run(group.rejected.map((point)=>[point.color.x, point.color.y, point.color.z]), 5, 2)
+            // declined_clusters.sort((a,b)=>b.length - a.length);
+            // const rejected_colors = declined_clusters.map((cluster)=>{
+            //     const result = cluster.reduce((ac, va)=>{
+            //         ac[0] += group.rejected[va].color.x;
+            //         ac[1] += group.rejected[va].color.y;
+            //         ac[2] += group.rejected[va].color.z;
+            //         return ac
+            //     }, [0,0,0])
+            //     result[0] /= declined_clusters.length
+            //     result[1] /= declined_clusters.length
+            //     result[2] /= declined_clusters.length
+            //     return result;
+            // });
+
+            // const dist_calc = (a,b)=>Math.sqrt(Math.pow(a[0]-b[0],2) + Math.pow(a[1]-b[1],2) + Math.pow(a[2]-b[2],2))
+            // const accepted_color_dists = accepted_colors.map((color)=>dist_calc([point.color.x, point.color.y, point.color.z], color));
+            // const rejected_color_dists = rejected_colors.map((color)=>dist_calc([point.color.x, point.color.y, point.color.z], color));
+            
+            // let accepted_min_idx = 0;
+            // let rejected_min_idx = 0;
+            // let accepted_min_val = Number.MAX_SAFE_INTEGER;
+            // let rejected_min_val = Number.MAX_SAFE_INTEGER;
+            // for (let i = 0; i < (accepted_color_dists.length>rejected_color_dists.length)?accepted_color_dists.length:rejected_color_dists.length;i++) {
+            //     if (rejected_color_dists.length>i) {
+            //         if (rejected_min_val > rejected_color_dists[i]) {
+            //             rejected_min_val = rejected_color_dists[i]
+            //             rejected_min_idx = i;
+            //         }
+            //     }
+
+            //     if (accepted_color_dists.length>i) {
+            //         if (accepted_min_val > accepted_color_dists[i]) {
+            //             accepted_min_val = accepted_color_dists[i]
+            //             accepted_min_idx = i;
+            //         }
+            //     }
+            // }
+
+            // console.log("again");
+            // console.log(accepted_min_val)
+            // console.log(rejected_min_val)
+
+            const dist_calc = (a, b) => 
+                Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2));
+
+            function distanceToBlobColor(point) {
+                return dist_calc(
+                    [blobColor.x, blobColor.y, blobColor.z],
+                    [point.color.x, point.color.y, point.color.z],
+                );
+            }
+
+            function distanceToBlobCenter(point) {
+                return dist_calc(
+                    [blobCenter.x, blobCenter.y, blobCenter.z],
+                    [point.center.x, point.center.y, point.center.z],
+                );
+            }
+
+            function minimumDistance() {
+                return Math.abs(minDist-meanDists);
+            }
+
+            function acceptedPoints() {
+                return group.accepted.length;
+            }
+
+            function rejectedPoints() {
+                return group.rejected.length;
+            }
+
+            let isGood = [
+                1 * distanceToBlobColor(point),
+                1 * distanceToBlobCenter(point),
+                1 * minimumDistance(),
+                1 * acceptedPoints(),
+                -1 * rejectedPoints(),
+            ]
+            console.log(isGood);
+            isGood = isGood.reduce((pre, cur)=>pre + cur, 0)
+            console.log(isGood);
+            isGood = (isGood >= 0) ? true : false
+            console.log(isGood)
 
             if (isGood) {
                 point.accepted = true;
@@ -120,74 +262,22 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
 
         const needsExploration = {px:false, nx:false, ny:false, py:false, nz:false, pz:false};
 
-        const DBSCAN_DATA = [];
-        const INDEXES = [];
-
         for (let i of idxs) {
-            INDEXES.push(i);
             const point = new PointDto();
             point.id = i
             point.center = new THREE.Vector3();
             point.color = new THREE.Vector4();
             this.getSplatCenter(i, point.center, false)
             this.getSplatColor(i, point.color)
-            DBSCAN_DATA.push([point.color.x, point.color.y, point.color.z]);
-            //DBSCAN_DATA.push([point.center.x, point.center.y, point.center.z]);
 
             //DO NOT DELETE THIS IS USED TO EXPORE MOR ENODES
-            // if (acceptPoint(point)) {
-            //     [needsExploration.px, needsExploration.nx] = needsExplorationCheck(center.x, point.center.x, xSpan);
-            //     [needsExploration.py, needsExploration.ny] = needsExplorationCheck(center.y, point.center.y, ySpan);
-            //     [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
-            // }
-
-        }
-
-        console.log(DBSCAN_DATA);
-
-        const dbscan = new DBSCAN();
-        const clusters = dbscan.run(DBSCAN_DATA, 5, 1);
-        const noise = dbscan.noise;
-
-        for (let i = 0; i < noise.length; i++) {
-            noise[i] = INDEXES[noise[i]];
-        }
-        this.updateGPUSplatColors(noise, 0,0,0,255);
-
-        const colors = [
-            [255,0,0],    // Red
-            [0,255,0],    // Green
-            [0,0,255],    // Blue
-            [255,255,0],  // Yellow
-            [0,255,255],  // Cyan
-            [255,0,255],  // Magenta
-            [255,255,255],// White
-            [128,0,0],    // Maroon
-            [128,128,0],  // Olive
-            [0,128,0],    // Dark Green
-            [128,0,128],  // Purple
-            [0,128,128],  // Teal
-            [0,0,128],    // Navy
-            [192,192,192],// Silver
-            [128,128,128],// Gray
-            [255,165,0],  // Orange
-            [255,192,203],// Pink
-            [75,0,130],   // Indigo
-            [240,230,140],// Khaki
-            [173,216,230],// Light Blue
-            [250,128,114],// Salmon
-            [244,164,96], // Sandy Brown
-            [32,178,170], // Light Sea Green
-            [255,215,0]   // Gold
-        ];
-        console.log(clusters);
-        clusters.forEach((cluster, i)=>{
-            for (let i = 0; i < cluster.length; i++) {
-                cluster[i] = INDEXES[cluster[i]];
+            if (acceptPoint(point)) {
+                [needsExploration.px, needsExploration.nx] = needsExplorationCheck(center.x, point.center.x, xSpan);
+                [needsExploration.py, needsExploration.ny] = needsExplorationCheck(center.y, point.center.y, ySpan);
+                [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
             }
-            this.updateGPUSplatColors(cluster, ...colors[i], 255);
-        })
-        
+
+        }  
 
         const adjacent = this.getSplatTree().getNodesAdjacent(node, {px:!needsExploration.px, nx:!needsExploration.nx, py:!needsExploration.py, ny:!needsExploration.ny, pz:!needsExploration.pz, nz:!needsExploration.nz})
 
@@ -199,7 +289,7 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
 
     const node = this.getOctreeNodeFromIndex(splatIndex); 
     knnExplore(node);
-
+    console.log(group);
     return group.accepted;
 }
 
