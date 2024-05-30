@@ -54,7 +54,8 @@ SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a)
 
 SplatMesh.prototype.knnOctree = function (splatIndex) {
     const EXPLORED_NODES = {};
-    const ALLOWED_GAP = 0; //TODO just block expansion for now
+    const EXPLORATION_GAP = window.exploration_gap || 0.095; //seems to be a decent number
+    const MIN_DISTS = window.min_dists || 10; 
     
     class PointDto {
         id;
@@ -63,9 +64,10 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
     }
 
     //used to check if need to explore outside of node
+    //WARNING ONLY USE POINTS THAT ARE GUARENTEED CORRECT!!! We dont want to waste time since weve already determined that this point is a good color
     const needsExplorationCheck = (centerCoord, pointCoord, boxRadius) => {
         const dist = Math.abs(centerCoord - pointCoord);
-        if (Math.abs(dist - boxRadius) < ALLOWED_GAP) {
+        if (Math.abs(dist - boxRadius) < EXPLORATION_GAP) {
             if (centerCoord < pointCoord) {
                 return [false, true];
             } else {
@@ -101,8 +103,8 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
         };
 
         const acceptPoint = (point)=>{
-            let minDist = Number.MAX_SAFE_INTEGER;
-            let meanDists = 0;
+            let minDist = [];
+            let minIdxs = [];
             const blobCenter = new THREE.Vector3();
             const blobColor = new THREE.Vector4();
             
@@ -114,16 +116,20 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
                     blobCenter.add(group.accepted[i].center)
                     blobColor.add(group.accepted[i].color)
 
-                    for (let ii = 0; ii < group.accepted; ii++) {
-                        meanDists += group.accepted[i].center.distanceTo(group.accepted[ii].center);
-                    }
-    
-                    if (dist < minDist) {
-                        minDist = dist;
+                    if (minDist.length < MIN_DISTS) {
+                        minDist.push(dist);
+                        minIdxs.push(i);
+                    } else {
+                        for (let j = 0; j < minDist.length; j++) {
+                            if (minDist[j] > dist) {
+                                minDist[j] = dist;
+                                minIdxs[j] = i;
+                                j = minDist.length;
+                            }
+                        }
                     }
                 }
     
-                meanDists /= group.accepted.length;
                 blobCenter.divideScalar(group.accepted.length);
                 blobColor.divideScalar(group.accepted.length);
             }
@@ -192,43 +198,57 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
                 Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2));
 
             function distanceToBlobColor(point) {
-                return dist_calc(
+                const dist = dist_calc(
                     [blobColor.x, blobColor.y, blobColor.z],
                     [point.color.x, point.color.y, point.color.z],
                 );
+
+                return dist < (window.color_dist || 50);
             }
 
             function distanceToBlobCenter(point) {
-                return dist_calc(
+                const dist = dist_calc(
                     [blobCenter.x, blobCenter.y, blobCenter.z],
                     [point.center.x, point.center.y, point.center.z],
-                );
+                )
+
+                return dist < (window.dist_from_center || 1);
             }
 
-            function minimumDistance() {
-                return Math.abs(minDist-meanDists);
+            function distanceToNearestPoint() {
+                function median(values) {
+
+                    if (values.length === 0) {
+                      throw new Error('Input array is empty');
+                    }
+                  
+                    // Sorting values, preventing original array
+                    // from being mutated.
+                    values = [...values].sort((a, b) => a - b);
+                  
+                    const half = Math.floor(values.length / 2);
+                  
+                    return (values.length % 2
+                      ? values[half]
+                      : (values[half - 1] + values[half]) / 2
+                    );
+                  
+                }
+
+                console.log(median(minDist));
+                return median(minDist) < (window.min_dist || 0.06)
             }
 
-            function acceptedPoints() {
-                return group.accepted.length;
-            }
-
-            function rejectedPoints() {
-                return group.rejected.length;
+            function distanceToOriginCenter(point) {
+                return startingPoint.center.distanceTo(point.center) < (window.dist_from_start || 1)
             }
 
             let isGood = [
-                1 * distanceToBlobColor(point),
-                1 * distanceToBlobCenter(point),
-                1 * minimumDistance(),
-                1 * acceptedPoints(),
-                -1 * rejectedPoints(),
-            ]
-            console.log(isGood);
-            isGood = isGood.reduce((pre, cur)=>pre + cur, 0)
-            console.log(isGood);
-            isGood = (isGood >= 0) ? true : false
-            console.log(isGood)
+                distanceToOriginCenter(point),
+                distanceToBlobCenter(point),
+                distanceToBlobColor(point),
+                distanceToNearestPoint(),
+            ].every((v)=>v===true)
 
             if (isGood) {
                 point.accepted = true;
@@ -251,6 +271,8 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
         } else {
             EXPLORED_NODES[node.id] = true
         }
+
+        this.add(new THREE.Box3Helper(node.boundingBox));
 
         const idxs = node.data.indexes
         const center = new THREE.Vector3();
@@ -277,7 +299,9 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
                 [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
             }
 
-        }  
+        }
+
+        console.log(group);
 
         const adjacent = this.getSplatTree().getNodesAdjacent(node, {px:!needsExploration.px, nx:!needsExploration.nx, py:!needsExploration.py, ny:!needsExploration.ny, pz:!needsExploration.pz, nz:!needsExploration.nz})
 

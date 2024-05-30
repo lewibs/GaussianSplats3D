@@ -78,8 +78,6 @@ export class Raycaster {
                 else return -1;
             });
             
-            const node = splatMesh.getOctreeNodeFromIndex(outHits[0].splatIndex)
-            splatMesh.add(new THREE.Box3Helper(node.boundingBox));
             const nodes = splatMesh.knnOctree(outHits[0].splatIndex);
             const idxs = nodes.map((node)=>node.id)
             splatMesh.updateGPUSplatColors(idxs, 255,10,10,100)
