@@ -54,7 +54,7 @@ SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a)
 
 SplatMesh.prototype.knnOctree = function (splatIndex) {
     const EXPLORED_NODES = {};
-    const EXPLORATION_GAP = window.exploration_gap || 0.095; //seems to be a decent number
+    const EXPLORATION_GAP = window.exploration_gap || 0.1; //seems to be a decent number
     const MIN_DISTS = window.min_dists || 10; 
     
     class PointDto {
@@ -134,66 +134,6 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
                 blobColor.divideScalar(group.accepted.length);
             }
 
-            //TODO decide if it is good here...
-            // const dbscan = new DBSCAN()
-            // var accepted_clusters = dbscan.run(group.accepted.map((point)=>[point.color.x, point.color.y, point.color.z]), 5, 2)
-            // accepted_clusters.sort((a,b)=>b.length - a.length);
-            // const accepted_colors = accepted_clusters.map((cluster)=>{
-            //     const result = cluster.reduce((ac, va)=>{
-            //         ac[0] += group.accepted[va].color.x;
-            //         ac[1] += group.accepted[va].color.y;
-            //         ac[2] += group.accepted[va].color.z;
-            //         return ac
-            //     }, [0,0,0])
-            //     result[0] /= accepted_clusters.length
-            //     result[1] /= accepted_clusters.length
-            //     result[2] /= accepted_clusters.length
-            //     return result;
-            // });
-
-            // var declined_clusters = dbscan.run(group.rejected.map((point)=>[point.color.x, point.color.y, point.color.z]), 5, 2)
-            // declined_clusters.sort((a,b)=>b.length - a.length);
-            // const rejected_colors = declined_clusters.map((cluster)=>{
-            //     const result = cluster.reduce((ac, va)=>{
-            //         ac[0] += group.rejected[va].color.x;
-            //         ac[1] += group.rejected[va].color.y;
-            //         ac[2] += group.rejected[va].color.z;
-            //         return ac
-            //     }, [0,0,0])
-            //     result[0] /= declined_clusters.length
-            //     result[1] /= declined_clusters.length
-            //     result[2] /= declined_clusters.length
-            //     return result;
-            // });
-
-            // const dist_calc = (a,b)=>Math.sqrt(Math.pow(a[0]-b[0],2) + Math.pow(a[1]-b[1],2) + Math.pow(a[2]-b[2],2))
-            // const accepted_color_dists = accepted_colors.map((color)=>dist_calc([point.color.x, point.color.y, point.color.z], color));
-            // const rejected_color_dists = rejected_colors.map((color)=>dist_calc([point.color.x, point.color.y, point.color.z], color));
-            
-            // let accepted_min_idx = 0;
-            // let rejected_min_idx = 0;
-            // let accepted_min_val = Number.MAX_SAFE_INTEGER;
-            // let rejected_min_val = Number.MAX_SAFE_INTEGER;
-            // for (let i = 0; i < (accepted_color_dists.length>rejected_color_dists.length)?accepted_color_dists.length:rejected_color_dists.length;i++) {
-            //     if (rejected_color_dists.length>i) {
-            //         if (rejected_min_val > rejected_color_dists[i]) {
-            //             rejected_min_val = rejected_color_dists[i]
-            //             rejected_min_idx = i;
-            //         }
-            //     }
-
-            //     if (accepted_color_dists.length>i) {
-            //         if (accepted_min_val > accepted_color_dists[i]) {
-            //             accepted_min_val = accepted_color_dists[i]
-            //             accepted_min_idx = i;
-            //         }
-            //     }
-            // }
-
-            // console.log("again");
-            // console.log(accepted_min_val)
-            // console.log(rejected_min_val)
-
             const dist_calc = (a, b) => 
                 Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2));
 
@@ -235,7 +175,6 @@ SplatMesh.prototype.knnOctree = function (splatIndex) {
                   
                 }
 
-                console.log(median(minDist));
                 return median(minDist) < (window.min_dist || 0.06)
             }
 
