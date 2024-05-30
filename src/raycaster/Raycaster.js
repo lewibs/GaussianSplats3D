@@ -78,7 +78,7 @@ export class Raycaster {
                 else return -1;
             });
             
-            const group = splatMesh.knnOctree(outHits[0].splatIndex);
+            const group = splatMesh.objectDetection(outHits[0].splatIndex);
             const acepted_idxs = group.accepted.map((node)=>node.id);
             splatMesh.updateGPUSplatColors(acepted_idxs, 0,255,0,255);
             const rejected_idxs = group.rejected.map((node)=>node.id);

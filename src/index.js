@@ -19,6 +19,7 @@ import { LogLevel } from './LogLevel.js';
 import { SceneRevealMode } from './SceneRevealMode.js';
 
 import "./Prototypes.js";
+import "./RANSAC.js";
 
 export {
     PlyParser,
