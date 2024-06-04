@@ -20,6 +20,7 @@ import { SceneRevealMode } from './SceneRevealMode.js';
 
 import "./Prototypes.js";
 import "./RANSAC.js";
+import "./VOXEL.js";
 
 export {
     PlyParser,

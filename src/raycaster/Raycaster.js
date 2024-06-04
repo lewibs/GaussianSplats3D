@@ -80,9 +80,14 @@ export class Raycaster {
             
             const group = splatMesh.objectDetection(outHits[0].splatIndex);
             const acepted_idxs = group.accepted.map((node)=>node.id);
-            splatMesh.updateGPUSplatColors(acepted_idxs, 0,255,0,255);
+            if (window.showAccepted) {
+                splatMesh.updateGPUSplatColors(acepted_idxs, 0,255,0,255);
+            }
+
             const rejected_idxs = group.rejected.map((node)=>node.id);
-            splatMesh.updateGPUSplatColors(rejected_idxs, 255,0,0,255);
+            if (window.showRejected) {
+                splatMesh.updateGPUSplatColors(rejected_idxs, 255,0,0,255);
+            }
 
             return outHits;
         };

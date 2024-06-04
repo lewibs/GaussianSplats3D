@@ -6,6 +6,7 @@ import { SplatTree } from "./splattree/SplatTree";
 import BlobTree from "./BlobTree";
 import DBSCAN from "./DBSCAN";
 import OPTICS from "./OPTICS";
+import KMEANS from "./KMEANS";
 
 const colors = [
     [255,0,0],    // Red
@@ -31,8 +32,64 @@ const colors = [
     [250,128,114],// Salmon
     [244,164,96], // Sandy Brown
     [32,178,170], // Light Sea Green
-    [255,215,0]   // Gold
+    [255,215,0],  // Gold
+    [220,20,60],  // Crimson
+    [60,179,113], // Medium Sea Green
+    [138,43,226], // Blue Violet
+    [255,99,71],  // Tomato
+    [154,205,50], // Yellow Green
+    [218,112,214],// Orchid
+    [139,69,19],  // Saddle Brown
+    [233,150,122],// Dark Salmon
+    [144,238,144],// Light Green
+    [70,130,180], // Steel Blue
+    [255,140,0],  // Dark Orange
+    [186,85,211], // Medium Orchid
+    [127,255,0],  // Chartreuse
+    [205,92,92],  // Indian Red
+    [64,224,208], // Turquoise
+    [210,105,30], // Chocolate
+    [148,0,211],  // Dark Violet
+    [255,20,147], // Deep Pink
+    [85,107,47],  // Dark Olive Green
+    [255,228,181],// Moccasin
+    [100,149,237],// Cornflower Blue
+    [255,69,0],   // Red Orange
+    [255,222,173],// Navajo White
+    [199,21,133], // Medium Violet Red
+    [72,61,139],  // Dark Slate Blue
+    [199,21,133], // Medium Violet Red
+    [75,0,130],   // Indigo
+    [107,142,35], // Olive Drab
+    [255,250,205],// Lemon Chiffon
+    [0,206,209],  // Dark Turquoise
+    [95,158,160], // Cadet Blue
+    [176,224,230],// Powder Blue
+    [0,191,255],  // Deep Sky Blue
+    [123,104,238],// Medium Slate Blue
+    [255,160,122],// Light Salmon
+    [240,128,128],// Light Coral
+    [210,180,140],// Tan
+    [255,105,180],// Hot Pink
+    [147,112,219],// Medium Purple
+    [128,0,0],    // Dark Red
+    [173,255,47], // Green Yellow
+    [85,107,47],  // Dark Olive Green
+    [244,164,96], // Sandy Brown
+    [127,255,212],// Aquamarine
+    [32,178,170], // Light Sea Green
+    [160,82,45],  // Sienna
+    [143,188,143],// Dark Sea Green
+    [255,69,0],   // Red Orange
+    [219,112,147],// Pale Violet Red
+    [255,20,147], // Deep Pink
+    [238,130,238],// Violet
+    [139,0,139],  // Dark Magenta
+    [255,218,185],// Peach Puff
+    [0,250,154],  // Medium Spring Green
+    [72,61,139]   // Dark Slate Blue
 ];
+
 
 SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a) {
     for (let i = 0; i < this.scenes.length; i++) {
@@ -50,6 +107,172 @@ SplatMesh.prototype.updateGPUSplatColors = function (global_indexes, r, g, b, a)
     }
 
     this.material.uniforms.centersColorsTexture.value.needsUpdate = true;
+}
+
+SplatMesh.prototype.DBSCAN = function(points, range, neighbors) {
+    // {
+    //     node_id: node.id,
+    //     indexes: idxs,
+    //     color: mean_color.clone(),
+    //     center: mean_center.clone(),
+    // }
+
+    let minx = Number.MAX_SAFE_INTEGER;
+    let miny = Number.MAX_SAFE_INTEGER;
+    let minz = Number.MAX_SAFE_INTEGER;
+    let maxx = Number.MIN_SAFE_INTEGER;
+    let maxy = Number.MIN_SAFE_INTEGER;
+    let maxz = Number.MIN_SAFE_INTEGER;
+
+    for (let i = 0; i < points.length; i++) {
+        if (points[i].center.x > maxx) {
+            maxx = points[i].center.x;
+        }
+        if (points[i].center.x < minx) {
+            minx = points[i].center.x;
+        }
+        if (points[i].center.y > maxy) {
+            maxy = points[i].center.y;
+        }
+        if (points[i].center.y < miny) {
+            miny = points[i].center.y;
+        }
+        if (points[i].center.z > maxz) {
+            maxz = points[i].center.z;
+        }
+        if (points[i].center.z < minz) {
+            minz = points[i].center.z;
+        }
+    }
+
+    for (let i = 0; i < points.length; i++) {
+        points[i].center.x = (points[i].center.x-minx)/(maxx-minx);
+        points[i].center.y = (points[i].center.y-miny)/(maxy-miny);
+        points[i].center.z = (points[i].center.z-minz)/(maxz-minz);
+        points[i].color.x = points[i].color.x / 255;
+        points[i].color.y = points[i].color.y / 255;
+        points[i].color.z = points[i].color.z / 255;
+        points[i].color.w = points[i].color.w / 255;
+    }
+
+    const map = [];
+    const dataset = [];
+
+    for (let i = 0; i < points.length; i++) {
+        map.push(points[i].node_id);
+        dataset.push([points[i].center.x, points[i].center.y, points[i].center.z, points[i].color.x, points[i].color.y, points[i].color.z, points[i].color.w])
+    }
+
+    const dbscan = new DBSCAN();
+    const clusters = dbscan.run(dataset, range, neighbors);
+
+
+    for (let i = 0; i < clusters.length; i++) {
+        const global_ids = [];
+        let point = new THREE.Vector4();
+
+        for (let j = 0; j < clusters[i].length; j++) {
+            point = points[clusters[i][j]];
+            global_ids.push(...point.indexes);
+        }
+
+        this.updateGPUSplatColors(global_ids, ...colors[i], 255);
+    }
+
+    return clusters;
+}
+
+SplatMesh.prototype.visualizeClusters = function(points, clusters) {
+    clusters.forEach((cluster, i)=>{
+        const vertices = [];
+        cluster.forEach((i)=>{
+            vertices.push( points[i].color.x, points[i].color.y, points[i].color.z );
+        })
+      
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
+        const material = new THREE.PointsMaterial( );
+        material.color.set(colors[i][0] / 255, colors[i][1] / 255, colors[i][2] / 255);
+        const points_obj = new THREE.Points( geometry, material );
+        this.add(points_obj)
+      })
+}
+
+SplatMesh.prototype.downsample = function() {
+    const tree = this.getSplatTree()
+    const points = [];
+
+    tree.visitLeaves((node)=>{
+        const idxs = node.data.indexes;
+
+        const center = new THREE.Vector3();
+        const color = new THREE.Vector4();
+        const mean_center = new THREE.Vector3();
+        const mean_color = new THREE.Vector4();
+
+        for (let i of idxs) {
+            this.getSplatCenter(i, center, false);
+            this.getSplatColor(i, color);
+            mean_center.add(center);
+            mean_color.add(color);
+        }
+
+        mean_center.divideScalar(idxs.length);
+        mean_color.divideScalar(idxs.length);
+
+        points.push({
+            node_id: node.id,
+            indexes: idxs,
+            color: mean_color.clone(),
+            center: mean_center.clone(),
+        })
+    })
+
+    // tree.visitLeaves((node)=>{
+    //     const idxs = node.data.indexes;
+        
+    //     const center = new THREE.Vector3();
+    //     const color = new THREE.Vector4();
+        
+    //     const id_map = [];
+    //     const dataset = [];
+    //     const color_dataset = [];
+    //     const center_dataset = [];
+        
+    //     for (let i of idxs) {
+    //         this.getSplatCenter(i, center, false)
+    //         this.getSplatColor(i, color)
+    //         id_map.push(i);
+    //         dataset.push([...color.toArray()]);
+    //         color_dataset.push([...color.toArray()]);
+    //         center_dataset.push([...center.toArray()]);
+    //     }
+        
+    //     let dbscan = new DBSCAN();
+    //     let clusters = dbscan.run(dataset, 50, 4);
+
+    //     for (let i = 0; i < clusters.length; i++) {
+    //         const mean_center = new THREE.Vector3();
+    //         const mean_color = new THREE.Vector4();
+    //         for (let j = 0; j < clusters[i].length; j++) {
+    //             center.fromArray(center_dataset[clusters[i][j]]);
+    //             color.fromArray(color_dataset[clusters[i][j]]);
+    //             mean_color.add(color);
+    //             mean_center.add(center);
+    //         }
+    //         mean_center.divideScalar(clusters[i].length);
+    //         mean_color.divideScalar(clusters[i].length);
+            
+    //         points.push({
+    //             node_id: node.id,
+    //             indexes: clusters[i].map((i)=>id_map[i]),
+    //             color: mean_color.clone(),
+    //             center: mean_center.clone(),
+    //         })
+    //     }
+    // })
+
+    return points;
 }
 
 SplatMesh.prototype.objectDetection = function (splatIndex) {
@@ -184,8 +407,6 @@ SplatMesh.prototype.objectDetection = function (splatIndex) {
             EXPLORED_NODES[node.id] = true
         }
 
-        this.add(new THREE.Box3Helper(node.boundingBox));
-
         const idxs = node.data.indexes
         const center = new THREE.Vector3();
         node.boundingBox.getCenter(center);
@@ -196,6 +417,10 @@ SplatMesh.prototype.objectDetection = function (splatIndex) {
 
         const needsExploration = {px:false, nx:false, ny:false, py:false, nz:false, pz:false};
 
+        const mean_color = new THREE.Vector4();
+        const mean_center = new THREE.Vector3();
+        let accepted = 0;
+
         //first pass
         for (let i of idxs) {
             const point = new PointDto();
@@ -205,13 +430,34 @@ SplatMesh.prototype.objectDetection = function (splatIndex) {
             this.getSplatCenter(i, point.center, false)
             this.getSplatColor(i, point.color)
 
+            
             //DO NOT DELETE THIS IS USED TO EXPORE MOR ENODES
             if (acceptPointFirstPass(point)) {
+                accepted++;
+                mean_color.add(point.color);
+                mean_center.add(point.center);
                 [needsExploration.px, needsExploration.nx] = needsExplorationCheck(center.x, point.center.x, xSpan);
                 [needsExploration.py, needsExploration.ny] = needsExplorationCheck(center.y, point.center.y, ySpan);
                 [needsExploration.pz, needsExploration.nz] = needsExplorationCheck(center.z, point.center.z, zSpan);
             }
+        }
 
+        mean_color.divideScalar(accepted);
+        mean_color.divideScalar(255);
+        mean_center.divideScalar(accepted);
+        
+        if (window.showBox) {
+            this.add(new THREE.Box3Helper(node.boundingBox));
+        }
+
+        if (window.showMeanVoxel) {
+            //TODO scale by length?
+            const geometry = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+            const material = new THREE.MeshBasicMaterial();
+            material.color.set(...mean_color.toArray())
+            const obj = new THREE.Mesh(geometry, material);
+            obj.position.set(mean_center.x, mean_center.y, mean_center.z);
+            this.add(obj);
         }
 
         const adjacent = this.getSplatTree().getNodesAdjacent(node, {px:!needsExploration.px, nx:!needsExploration.nx, py:!needsExploration.py, ny:!needsExploration.ny, pz:!needsExploration.pz, nz:!needsExploration.nz})

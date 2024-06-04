@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 export function RANSAC(points, THRESHOLD, MAX_ITTERATIONS) {
     function select3Points(points) {
-        const idx = getRandomIntegersInRange(0, points.length, 3);
+        const idx = getRandomIntegersInRange(0, points.length - 1, 3);
         return [points[idx[0]], points[idx[1]], points[idx[2]]];
     }
 
